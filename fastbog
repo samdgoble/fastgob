@@ -126,10 +126,12 @@ public class fastGoblin extends LoopingBot {
         playerLocal=Players.getLocal();
         if (playerLocal!=null) {
             if (Inventory.contains(sword)) {
+                Execution.delay(3*clickMin,3*clickMax);
                 SpriteItem weapon = Inventory.getItems(sword).first();
                 if(weapon != null) {
                     weapon.interact("Wield");
                     System.out.println(timeFormat(System.currentTimeMillis()) + " | Wielded sword");
+                    Execution.delay(loopMin,loopMax);
                 }
             }
             if (Inventory.contains(shield)) {
@@ -137,6 +139,7 @@ public class fastGoblin extends LoopingBot {
                 if(protection != null) {
                     protection.interact("Wear");
                     System.out.println(timeFormat(System.currentTimeMillis()) + " | Wielded shield");
+                    Execution.delay(clickMin+loopMin,clickMax+loopMax);
                 }
             }
         }
