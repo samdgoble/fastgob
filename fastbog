@@ -31,8 +31,7 @@ public class fastGoblin extends LoopingBot {
     //Target
     public String sword = "Training sword";
     public String shield="Training shield";
-    public String target1="Goblin";
-    public String target2="Giant spider";
+    public String target="Goblin";
 
     //Ints
     public int magicDistance = 20;
@@ -98,7 +97,7 @@ public class fastGoblin extends LoopingBot {
                 if (didItClick) {
                     System.out.println(timeFormat(System.currentTimeMillis()) + " | Successful attack click");
                     System.out.println(timeFormat(System.currentTimeMillis()) + " | Waiting start for at least 1.5 seconds");
-                    Execution.delay(1500+clickMin,1500+clickMax);
+                    Execution.delay(clickMin,clickMax);
                     System.out.println(timeFormat(System.currentTimeMillis()) + " | Waiting end");
                 }
             }
@@ -315,18 +314,18 @@ public class fastGoblin extends LoopingBot {
     }
 
     public void getAttackTarget() {
-        npcToAttack = Npcs.newQuery().within(areaGoblins).names(target1,target2).results().sortByDistance().limit(1,3).random();
+        npcToAttack = Npcs.newQuery().within(areaGoblins).names(target).results().sortByDistance().limit(1,3).random();
         if (npcToAttack!=null&&npcToAttack.equals(npcLocal)) {
             npcToAttack=null;
         }
     }
 
     public void getNPCTargetList() {
-        npcTargets = Npcs.newQuery().targeting(playerLocal).names(target1,target2).results().sortByDistance();
+        npcTargets = Npcs.newQuery().targeting(playerLocal).names(target).results().sortByDistance();
     }
 
     public void getPlayerTargetList() {
-        playerTargets = Npcs.newQuery().targetedBy(playerLocal).names(target1,target2).results().sortByDistance();
+        playerTargets = Npcs.newQuery().targetedBy(playerLocal).names(target).results().sortByDistance();
     }
 
     public boolean getToggleRunFlag() {
