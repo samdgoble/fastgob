@@ -1,0 +1,701 @@
+package com.bots.fastGoblin;
+
+import com.runemate.game.api.hybrid.entities.Npc;
+import com.runemate.game.api.hybrid.entities.Player;
+import com.runemate.game.api.hybrid.entities.status.CombatGauge;
+import com.runemate.game.api.hybrid.input.Mouse;
+import com.runemate.game.api.hybrid.local.Camera;
+import com.runemate.game.api.hybrid.local.hud.Menu;
+import com.runemate.game.api.hybrid.local.hud.MenuItem;
+import com.runemate.game.api.hybrid.local.hud.interfaces.Inventory;
+import com.runemate.game.api.hybrid.local.hud.interfaces.SpriteItem;
+import com.runemate.game.api.hybrid.location.Area;
+import com.runemate.game.api.hybrid.location.Coordinate;
+import com.runemate.game.api.hybrid.location.navigation.Path;
+import com.runemate.game.api.hybrid.location.navigation.cognizant.RegionPath;
+import com.runemate.game.api.hybrid.queries.results.LocatableEntityQueryResults;
+import com.runemate.game.api.hybrid.region.Npcs;
+import com.runemate.game.api.hybrid.region.Players;
+import com.runemate.game.api.script.Execution;
+import com.runemate.game.api.script.framework.LoopingBot;
+
+import javax.swing.*;
+
+import java.util.Timer;
+import java.util.TimerTask;
+
+import static com.runemate.game.api.hybrid.location.navigation.Traversal.*;
+
+public class fastGoblin extends LoopingBot {
+
+    //public Area areaGoblins = new Area.Polygonal(new Coordinate( 3242, 3242 ,0),new Coordinate( 3252, 3242,0 ),new Coordinate( 3252, 3246 ,0),new Coordinate( 3255, 3246,0 ),new Coordinate( 3258, 3240,0 ),new Coordinate( 3258, 3232,0 ),new Coordinate( 3255, 3228,0 ),new Coordinate( 3253, 3227,0 ),new Coordinate( 3248, 3227 ,0),new Coordinate( 3247, 3229,0 ),new Coordinate( 3245, 3232,0 ),new Coordinate( 3243, 3234,0 ),new Coordinate( 3242, 3235 ,0));
+    public Area areaGoblins = new Area.Polygonal(new Coordinate( 3238,3242  ,0),new Coordinate( 3252, 3242,0 ),new Coordinate(3252 , 3248 ,0),new Coordinate( 3264, 3248,0 ),new Coordinate( 3264, 3219,0 ),new Coordinate( 3250, 3225,0 ));
+
+    //Target
+    public String sword = "Training sword";
+    public String shield="Bronze sq shield";
+    public String hat="Chef's hat";
+    public String target="Goblin";
+
+    //Ints
+    public int magicDistance = 20;
+    public int ab1, ab2, ab3, ab4, ab1T, ab2T, ab3T, ab4T;
+    public int clickMin, clickMax, loopMin, loopMax;
+    public int loopMinStart = 150, loopMaxStart = 350;
+    public int lowHealthThreshold;
+    public int lowHealthThresholdStart = 65;
+    public int runThreshold;
+    public int runThresholdStart = 65;
+    public int numberOfNPCTargets, numberOfPlayerTargets;
+    public int playerHP, playerRunEnergy;
+    public int scriptCounter = 0;
+    public int timerTimeout=0;
+    public int timerCountBreak=0;
+    public int successes=0;
+    public int failures=0;
+
+    //Combat timer
+    public java.util.Timer combatTimer=new Timer();
+
+    //Objects
+    public CombatGauge healthGauge;
+    public Player playerLocal;
+    public Npc npcLocal;
+    public Npc npcPrevious;
+    public Npc npcToAttack;
+    public LocatableEntityQueryResults<Npc> playerTargets, npcTargets;
+
+    //GUI
+    public JFrame frame = new JFrame("fastGoblin");
+    public JTextArea textArea = new JTextArea(50, 50);
+
+    //Booleans
+    public boolean bankFlag, busyFlag, oldBusyFlag, combatFlag,oldCombatFlag, lowHealthFlag, toggleRunFlag, needToMoveFlag;
+    public volatile boolean timerTimedOut=false;
+    //Longs
+    public long timeStart;
+
+    //String
+    public String currentState;
+
+    //States
+    public enum State {TURNINGONRUN, MOVING, ATTACKING, NOTHING}
+
+    public State getCurrentState() {
+        Player localPlayer=Players.getLocal();
+        if (getToggleRunFlag()) return State.TURNINGONRUN;
+        if (getNeedToMoveFlag() && !getBusyFlag()) return State.MOVING;
+        if (localPlayer!=null) {
+            if (!getBusyFlag() || timerTimedOut&&(playerLocal.getAnimationId() != -1 || playerLocal.isMoving())) {
+                return State.ATTACKING;
+            }
+        }
+        return State.NOTHING;
+    }
+
+    public void playerNeedsATimeOutFight() {
+        combatTimer.cancel();
+        Player playerBool = Players.getLocal();
+        Npc npcTimeout=Npcs.newQuery().names(target).targeting(playerBool).results().nearest();
+        if (playerBool != null && timerTimedOut && (playerBool.getAnimationId() == -1 || !playerBool.isMoving())) {
+            System.out.println(timeFormat(System.currentTimeMillis()) + " |");
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Player needs a timeout fight");
+            System.out.println(timeFormat(System.currentTimeMillis()) + " |");
+            if (npcTimeout!=null) {
+                if (!npcTimeout.isVisible()) {
+                    Camera.turnTo(npcTimeout);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Turning camera");
+                }
+                Mouse.setPathGenerator(Mouse.MLP_PATH_GENERATOR);
+                if (npcTimeout.click()) {
+                    Mouse.setPathGenerator(Mouse.CLOUSE_PATH_GENERATOR);
+                    timerTimedOut = false;
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | timerTimedOut flag set to: " + timerTimedOut);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Successful timeout attack click");
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Waiting start for at least 6 seconds");
+                    Execution.delay(6000+clickMin,10000+clickMax);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Waiting end");
+                    successes++;
+                }
+                else {
+                    timerCountBreak++;
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | timerCountBreak: "+timerCountBreak);
+                }
+                if (timerCountBreak>20) {
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | timerTimedOut flag set to: " + timerTimedOut+" because timerCountBreak is over "+timerCountBreak);
+                    timerTimedOut=false;
+                    timerCountBreak=0;
+                }
+            }
+        }
+    }
+
+    public void attacking() {
+        Execution.delay(2*clickMin,2*clickMax);
+        playerNeedsATimeOutFight();
+        getAttackTarget();
+        if (npcToAttack != null && npcToAttack.getTarget() == null&&!timerTimedOut&&(playerLocal.getAnimationId() == -1 || playerLocal.isMoving())) {
+            if (npcToAttack.isVisible()) {
+                Mouse.setPathGenerator(Mouse.MLP_PATH_GENERATOR);
+                boolean didItClick = npcToAttack.click();
+                //boolean didItClick = npcToAttack.interact("Attack");
+                Mouse.setPathGenerator(Mouse.CLOUSE_PATH_GENERATOR);
+                if (didItClick) {
+                    npcToAttack.hover();
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Successful attack click");
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Waiting start for at least 1.5 seconds");
+                    Execution.delay(1500+clickMin,1500+clickMax);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Waiting end");
+                    successes++;
+                }
+            }
+            else {
+                failures++;
+                int diceRoll = (int) Math.floor(Math.random() * 2);
+                if (diceRoll == 0) {
+                    Camera.concurrentlyTurnTo(npcToAttack);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Concurrently turning camera to nearest NPC");
+                } else if (diceRoll == 1) {
+                    Camera.turnTo(npcToAttack);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Non-concurrently turning camera to nearest NPC");
+                }
+            }
+        }
+        else {
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Skipping attack sequence");
+        }
+    }
+
+    public void moving() {
+        walkTo(areaGoblins);
+    }
+
+    public void inventory() {
+        playerLocal=Players.getLocal();
+        if (playerLocal!=null) {
+            if (Inventory.containsAnyExcept(sword,shield,hat)) {
+                SpriteItem itemToDrop = Inventory.getItems().first();
+                if (itemToDrop!=null) {
+                    itemToDrop.interact("Drop");
+                }
+            }
+            if (Inventory.contains(sword)) {
+                Execution.delay(3*clickMin,3*clickMax);
+                SpriteItem weapon = Inventory.getItems(sword).first();
+                if(weapon != null) {
+                    weapon.interact("Wield");
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Wielded sword");
+                    //Execution.delay(loopMin,loopMax);
+                }
+            }
+            if (Inventory.contains(shield)) {
+                SpriteItem protection = Inventory.getItems(shield).first();
+                if(protection != null) {
+                    protection.interact("Wield");
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Wielded shield");
+                    //Execution.delay(clickMin,clickMax);
+                }
+            }
+            if (Inventory.contains(hat)) {
+                SpriteItem headwear = Inventory.getItems(hat).first();
+                if(headwear != null) {
+                    headwear.interact("Wear");
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Wielded hat");
+                    //Execution.delay(clickMin+loopMin,clickMax+loopMax);
+                }
+            }
+        }
+    }
+
+    //Overrides
+    @Override
+    public void onStart(String... args) {
+        timeStart = System.currentTimeMillis();
+        System.out.println(timeFormat(timeStart) + " | Started");
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
+        frame.add(textArea, java.awt.BorderLayout.SOUTH);
+        frame.pack();
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setIconImage(new ImageIcon("c:/projects/ferrarisplash/ferrariToUse.png").getImage());
+        frame.setVisible(true);
+        update();
+    }
+
+    //Overrides
+    @Override
+    public void onLoop() {
+        update();
+        switch (getCurrentState()) {
+            case TURNINGONRUN:
+                currentState = "TURNINGONRUN";
+                turnOnRun();
+                break;
+            case MOVING:
+                currentState = "MOVING";
+                moving();
+                break;
+            case ATTACKING:
+                currentState = "ATTACKING";
+                attacking();
+                break;
+            case NOTHING:
+                currentState = "NOTHING";
+                break;
+        }
+    }
+
+    //Overrides
+    @Override
+    public void onStop() {
+    }
+
+    public int getNPCX() {
+        if (npcLocal != null && npcLocal.getPosition() != null) {
+            return npcLocal.getPosition().getX();
+        } else {
+            return 0;
+        }
+    }
+
+    public int getNPCY() {
+        if (npcLocal != null && npcLocal.getPosition() != null) {
+            return npcLocal.getPosition().getY();
+        } else {
+            return 0;
+        }
+    }
+
+    /*public int getPlayerHP() {
+        playerLocal = Players.getLocal();
+        if (playerLocal != null && playerLocal.getHealthGauge() != null) {
+            playerHP = playerLocal.getHealthGauge().getPercent();
+            return playerLocal.getHealthGauge().getPercent();
+        } else {
+            return playerHP;
+        }
+    }*/
+
+    public int getPlayerRunEnergy() {
+        playerLocal = Players.getLocal();
+        if (playerLocal != null) {
+            return getRunEnergy();
+        } else {
+            return playerRunEnergy;
+        }
+    }
+
+    public boolean getPlayerHPVisibility() {
+        playerLocal = Players.getLocal();
+        return playerLocal != null && playerLocal.getHealthGauge() != null;
+    }
+
+    public int getPlayerX() {
+        playerLocal = Players.getLocal();
+        if (playerLocal != null && playerLocal.getPosition() != null) {
+            return playerLocal.getPosition().getX();
+        } else {
+            return 0;
+        }
+    }
+
+    public int getPlayerY() {
+        playerLocal = Players.getLocal();
+        if (playerLocal != null && playerLocal.getPosition() != null) {
+            return playerLocal.getPosition().getY();
+        } else {
+            return 0;
+        }
+    }
+
+    public Coordinate getPlayerPos() {
+        if (Players.getLocal() != null) {
+            return Players.getLocal().getPosition();
+        } else {
+            return new Coordinate(0, 0, 0);
+        }
+    }
+
+    public void getRandomClick(int intervalMin, int intervalMax) {
+        clickMin = (int) (Math.floor(Math.random() * intervalMin)) + intervalMin;
+        clickMax = (int) (Math.floor(Math.random() * (intervalMax))) + clickMin;
+    }
+
+    public void getRandomLoop() {
+        loopMin = (int) (Math.floor(Math.random() * loopMinStart)) + loopMinStart;
+        loopMax = (int) (Math.floor(Math.random() * (loopMaxStart))) + loopMin;
+    }
+
+    public String getNPCName() {
+        if (npcLocal != null) {
+            return npcLocal.getName();
+        } else {
+            return ("No target");
+        }
+    }
+
+    public int getNPCLevel() {
+        if (npcLocal != null) {
+            return npcLocal.getLevel();
+        } else {
+            return 0;
+        }
+    }
+
+    public boolean getNPCValidity() {
+        return npcLocal != null && npcLocal.isValid();
+    }
+
+    public boolean getNPCMoving() {
+        return npcLocal != null && npcLocal.isMoving();
+    }
+
+    public boolean getNPCHovered() {
+        return npcLocal != null && npcLocal.isHovered();
+    }
+
+    public int getNPCAnimationID() {
+        if (npcLocal != null) {
+            return npcLocal.getAnimationId();
+        } else {
+            return 6942069;
+        }
+    }
+
+
+    public void getNPCTarget() {
+        getPlayerTargetList();
+        if (playerTargets != null) {
+            numberOfPlayerTargets = playerTargets.size();
+        }
+        npcPrevious = npcLocal;
+        getNPCTargetList();
+        if (npcTargets != null) {
+            numberOfNPCTargets = npcTargets.size();
+            npcLocal = npcTargets.first();
+        }
+
+    }
+
+    public void getAttackTarget() {
+        npcToAttack = Npcs.newQuery().within(areaGoblins).names(target).results().sortByDistance().limit(1,2).random();
+        if (npcToAttack!=null&&npcToAttack.equals(npcLocal)) {
+            npcToAttack=null;
+        }
+    }
+
+    public void getNPCTargetList() {
+        npcTargets = Npcs.newQuery().targeting(playerLocal).names(target).results().sortByDistance();
+    }
+
+    public void getPlayerTargetList() {
+        playerTargets = Npcs.newQuery().targetedBy(playerLocal).names(target).results().sortByDistance();
+    }
+
+    public boolean getToggleRunFlag() {
+        return toggleRunFlag;
+    }
+
+    public void setBankFlag() {
+        bankFlag = Inventory.isFull();
+    }
+
+    public boolean getBusyFlag() {
+        return busyFlag;
+    }
+
+    public boolean getNeedToMoveFlag() {
+        return needToMoveFlag;
+    }
+
+    public void setNeedToMoveFlag() {
+        needToMoveFlag= !areaGoblins.contains(getPlayerPos());
+    }
+
+    public void setBusyFlag() {
+        playerLocal = Players.getLocal();
+        oldBusyFlag=busyFlag;
+        busyFlag = playerLocal != null && (playerLocal.getAnimationId() != -1 || playerLocal.isMoving() || combatFlag);
+    }
+
+    public void setCombatFlag() {
+        playerLocal = Players.getLocal();
+        getNPCTarget();
+        oldCombatFlag=combatFlag;
+        combatFlag = (numberOfPlayerTargets != 0 | numberOfNPCTargets != 0);
+        if (combatFlag && !oldCombatFlag) {
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Combat state changed to true");
+            combatTimer.cancel();
+            combatTimer=new Timer();
+            TimerTask timerTask=new TimerTask() {
+                @Override
+                public void run() {
+                    if (!getPlayerHPVisibility()) {
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " |");
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " | Timer timeout: "+timerTimeout++);
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " |");
+                        combatFlag=false;
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " | Combat flag set to: "+combatFlag);
+                        timerTimedOut = true;
+                        timerCountBreak=0;
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " | timerCountBreak set to: "+timerCountBreak);
+                        update();
+                        Execution.delay(5*clickMin,5*clickMax);
+                    }
+                    else {
+                        timerTimedOut = false;
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " | Timer did not timeout: "+timerTimeout++);
+                    }
+                }
+            };
+            combatTimer.schedule(timerTask,6000+clickMin,10000+clickMax);
+        }
+    }
+
+    public void setLowHealthFlag() {
+        int diceRoll = (int) Math.floor(Math.random() * 40);
+        if (diceRoll == 0) {
+            lowHealthThreshold = lowHealthThresholdStart;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Low health threshold set to: " + lowHealthThreshold + "%");
+        } else if (diceRoll == 1) {
+            lowHealthThreshold = lowHealthThresholdStart - 10;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Low health threshold set to: " + lowHealthThreshold + "%");
+        } else if (diceRoll == 2) {
+            lowHealthThreshold = lowHealthThresholdStart - 20;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Low health threshold set to: " + lowHealthThreshold + "%");
+        } else if (diceRoll == 3) {
+            lowHealthThreshold = lowHealthThresholdStart - 30;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Low health threshold set to: " + lowHealthThreshold + "%");
+        }
+        if (Players.getLocal() != null) {
+            healthGauge = Players.getLocal().getHealthGauge();
+            lowHealthFlag = healthGauge != null && healthGauge.getPercent() <= lowHealthThreshold;
+        }
+    }
+
+    public void setToggleRunFlag() {
+        int diceRoll = (int) Math.floor(Math.random() * 40);
+        if (diceRoll == 0) {
+            runThreshold = runThresholdStart;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Run threshold set to: " + runThreshold + "%");
+        } else if (diceRoll == 1) {
+            runThreshold = runThresholdStart - 10;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Run threshold set to: " + runThreshold + "%");
+        } else if (diceRoll == 2) {
+            runThreshold = runThresholdStart - 20;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Run threshold set to: " + runThreshold + "%");
+        } else if (diceRoll == 3) {
+            runThreshold = runThresholdStart - 30;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Run threshold set to: " + runThreshold + "%");
+        }
+        if (Players.getLocal() != null) {
+            int runEnergy = getRunEnergy();
+            toggleRunFlag = (runEnergy >= runThreshold) && !isRunEnabled();
+        }
+    }
+
+    public void turnOnRun() {
+        toggleRun();
+    }
+
+    public String timeFormat(final long time) {
+        long s = time / 1000, m = s / 60, h = m / 60;
+        s %= 60;
+        m %= 60;
+        h %= 24;
+        return String.format("%02d:%02d:%02d", h, m, s);
+    }
+
+    public void update() {
+
+        //Looping delays
+        getRandomLoop();
+        setLoopDelay(loopMin, loopMax);
+
+        //Action delays
+        getRandomClick(loopMin, loopMax);
+
+        //Actions
+        inventory();
+        setBankFlag();
+        if (!timerTimedOut) {
+            setCombatFlag();
+        }
+
+        setBusyFlag();
+        setLowHealthFlag();
+        setToggleRunFlag();
+        setNeedToMoveFlag();
+
+        //Probability checks on antiban
+        ab1 = (int) Math.floor(Math.random() * 55);
+        ab2 = (int) Math.floor(Math.random() * 255);
+        ab3 = (int) Math.floor(Math.random() * 555);
+        ab4 = (int) Math.floor(Math.random() * 1055);
+
+        if (ab1 == 0) {
+            clickMin = 10 * clickMin;
+            clickMax = 10 * clickMax;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Antiban 1 event");
+            ab1T++;
+        }
+        if (ab2 == 0) {
+            clickMin = 20 * clickMin;
+            clickMax = 20 * clickMax;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Antiban 2 event");
+            ab2T++;
+        }
+        if (ab3 == 0) {
+            clickMin = 40 * clickMin;
+            clickMax = 40 * clickMax;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Antiban 3 event");
+            ab3T++;
+        }
+        if (ab4 == 0) {
+            clickMin = 100 * clickMin;
+            clickMax = 100 * clickMax;
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Antiban 4 event");
+            ab4T++;
+            int diceRoll = (int) Math.floor(Math.random() * 2);
+            if (diceRoll == 0) {
+                Camera.concurrentlyTurnTo(npcToAttack);
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Concurrently turning camera to nearest NPC");
+            } else if (diceRoll == 1) {
+                Camera.turnTo(npcToAttack);
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Non-concurrently turning camera to nearest NPC");
+            }
+        }
+        scriptCounter++;
+        updateGUI();
+        System.out.println(timeFormat(System.currentTimeMillis()) + " | successes: "+successes+" | failures: " + failures + " | scriptCounter: " + scriptCounter + " | timerTimeoutCounter: " + timerTimeout + " | loopMin: " + loopMin + " | loopMax: " + loopMax + " | clickMin: " + clickMin + " | clickMax: " + clickMax);
+        System.out.println(timeFormat(System.currentTimeMillis()) + " | state: " + currentState + " | bankFlag: " + bankFlag + " | busyFlag: " + busyFlag + " | oldBusyFlag: " + oldBusyFlag + " | combatFlag: " + combatFlag + " | oldCombatFlag: " + oldCombatFlag + " | lowHealthFlag: " + lowHealthFlag + " | toggleRunFlag: " + toggleRunFlag+ " | needToMove: " + needToMoveFlag + " | timerTimedOutFlag: "+timerTimedOut);
+        System.out.println("");
+        System.out.println("");
+    }
+
+    public void updateGUI() {
+        textArea.setText("fastBot" +
+                "\n\nStart time: " + timeFormat(timeStart) +
+                "\n\nCurr. time: " + timeFormat(System.currentTimeMillis()) +
+                "\n\nPlayer" +
+                "\nCurrent state: " + currentState +
+                //"\nHitpoints: " + getPlayerHP() + "%" +
+                "\nHealth Threshold: " + lowHealthThreshold +
+                "\nIs HP Visible: " + getPlayerHPVisibility() +
+                "\nRun Energy: " + getPlayerRunEnergy() +
+                "\nRun Threshold: " + runThreshold +
+                "\nX Coord: " + getPlayerX() +
+                "\nY Coord: " + getPlayerY() +
+                "\n\nTargets" +
+                "\nPlayer targets: " + numberOfPlayerTargets +
+                "\nNPC targets: " + numberOfNPCTargets +
+                "\nCurrent target: " + getNPCName() + " (level-" + getNPCLevel() + ")" +
+                "\nX Coord:: " + getNPCX() +
+                "\nY Coord:: " + getNPCY() +
+                "\nValid target: " + getNPCValidity() +
+                "\nMoving target: " + getNPCMoving() +
+                "\nAnimated target: " + getNPCAnimationID() +
+                "\nHovering target: " + getNPCHovered() +
+                "\n\nDebug" +
+                "\nScript counter: " + scriptCounter +
+                "\nTimer timeout counter: " + timerTimeout +
+                "\nMinimum loop interval: " + loopMin +
+                "\nMaximum loop interval: " + loopMax +
+                "\nMinimum click interval: " + clickMin +
+                "\nMaximum click interval: " + clickMax +
+                "\nStates - AB1: " + ab1 + " | AB2: " + ab2 + " | AB3: " + ab3 + " | AB4: " + ab4 +
+                "\nTotals - AB1: " + ab1T + " | AB2: " + ab2T + " | AB3: " + ab3T + " | AB4: " + ab4T +
+                "\n\nFlags" +
+                "\nBank flag: " + bankFlag +
+                "\nBusy flag: " + busyFlag +
+                "\nOld Busy flag: " + oldBusyFlag +
+                "\nCombat flag: " + combatFlag +
+                "\nOld Combat flag: " + oldCombatFlag +
+                "\nLow health flag: " + lowHealthFlag +
+                "\nToggle run flag: " + toggleRunFlag +
+                "\nNeed to move: " + needToMoveFlag +
+                "\ntimerTimedOutFlag: " + timerTimedOut +
+                "\ntimerCountBreak: " + timerCountBreak +
+                "\nSuccesses: " + successes +
+                "\nFailures: " + failures);
+    }
+
+    public void walkTo(Area area) {
+        Coordinate coordsToGoTo,coordsToGoToFinal;
+
+        int initialCheck=0;
+        while (!area.contains(getPlayerPos())) {
+
+            System.out.println(timeFormat(System.currentTimeMillis()) + " | Starting coordinates | X: " + getPlayerX() + " | Y: " + getPlayerY());
+
+            Area combined = new Area.Rectangular(new Coordinate(getPlayerX(),getPlayerY(),0),new Coordinate(area.getRandomCoordinate().getX(),area.getRandomCoordinate().getY(),0));
+
+            //Initialise "first" coordinate check looking right at the final area
+            if (initialCheck==0) {
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Initialising first coordinate check looking at the final area");
+                coordsToGoTo = area.getRandomCoordinate();
+                coordsToGoToFinal=coordsToGoTo;
+                initialCheck++;
+            }
+            //Initialise "first" coordinate check looking at the combined area
+            else {
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Initialising coordinate check looking at the combined area");
+                coordsToGoTo = combined.getRandomCoordinate();
+                coordsToGoToFinal=coordsToGoTo;
+            }
+
+            if (coordsToGoTo.isReachable()) {
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Reachable coordinates on first iteration | X: " + coordsToGoTo.getX() + " | Y: " + coordsToGoTo.getY());
+            } else {
+
+                boolean notReachable = true;
+                int notReachableStepCounter = 0;
+
+                while (notReachable) {
+                    update();
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Unreachable coordinates | X: " + coordsToGoTo.getX() + " | Y: " + coordsToGoTo.getY() + " | Iteration: " + notReachableStepCounter++);
+                    Coordinate previousCoords = coordsToGoTo;
+                    coordsToGoTo = combined.getRandomCoordinate();
+                    if (coordsToGoTo.isReachable()) {
+
+                        if (coordsToGoToFinal.distanceTo(coordsToGoTo)  + magicDistance > coordsToGoToFinal.distanceTo(getPlayerPos())) {
+                            coordsToGoTo = previousCoords;
+                            System.out.println(timeFormat(System.currentTimeMillis()) + " | Reset coordinates to previous coordinates and recycled loop");
+                        } else {
+                            System.out.println(timeFormat(System.currentTimeMillis()) + " | Reachable coordinates: | X: " + coordsToGoTo.getX() + " | Y: " + coordsToGoTo.getY());
+                            notReachable = false;
+                        }
+                    }
+                    if (notReachableStepCounter>25) {
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " | Breaking the loop");
+                        break;
+                    }
+                }
+
+            }
+
+            Path pathToTry = RegionPath.buildTo(coordsToGoTo);
+            if (pathToTry != null) {
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Coordinates to move to - You to (X): " + getPlayerX() + "(" + coordsToGoTo.getX() + ") | You to (Y): " + getPlayerY() + "(" + coordsToGoTo.getY() + ")");
+                boolean walking = true;
+                int stepCounter = 0;
+                while (walking) {
+                    update();
+                    pathToTry.step(Path.TraversalOption.MANAGE_DISTANCE_BETWEEN_STEPS);
+                    Execution.delay(150, 550);
+                    System.out.println(timeFormat(System.currentTimeMillis()) + " | Current coordinates | X: " + getPlayerX() + " | Y: " + getPlayerY() + " | Step: " + stepCounter++);
+                    if (area.contains(getPlayerPos())||coordsToGoTo.equals(new Coordinate(getPlayerX(), getPlayerY(), 0))) {
+                        System.out.println(timeFormat(System.currentTimeMillis()) + " | Final coordinates | X: " + getPlayerX() + " | Y: " + getPlayerY());
+                        walking = false;
+                    }
+
+                }
+            }
+            else {
+                System.out.println(timeFormat(System.currentTimeMillis()) + " | Couldn't move to iteration");
+            }
+
+        }
+    }
+
+}
